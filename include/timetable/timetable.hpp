@@ -54,22 +54,16 @@ private:
 }; // spinlock
 
 } // detail
-  
-
-struct scheduler_traits {
-    using lock_type = detail::spinlock;
-    using clock_type = std::chrono::system_clock;
-    static inline typename clock_type::duration const precision = std::chrono::seconds(1);
-}; // scheduler_traits
 
 
-template<typename Tr = scheduler_traits>
+template<typename L = detail::spinlock>
 class scheduler {
 public:
-    using lock_type = typename Tr::lock_type;
-    using clock_type = typename Tr::clock_type;
+    using lock_type = L;
+    using clock_type = std::chrono::system_clock;
     using time_point = typename clock_type::time_point;
     using duration = typename clock_type::duration;
+    using days = std::chrono::duration<std::int64_t, std::ratio<86400>>;
 
     struct task {
         time_point previous;
@@ -82,7 +76,10 @@ public:
     using tasks = std::multimap<time_point, task_ptr>;
     using rescheduled_tasks = std::vector<task_ptr>;
 
-    scheduler() = default;
+    scheduler(duration const& granularity = std::chrono::seconds{1})
+        : granularity_{granularity}
+    { }
+    
     scheduler(scheduler const&) = delete;
     scheduler& operator = (scheduler const&) = delete;
     ~scheduler() { stop(); }
@@ -96,37 +93,23 @@ public:
         task_ptr tp = std::make_unique<task>(task{now, interval,
                                                 next, std::forward<F>(f)});
         std::unique_lock<lock_type> g(tasks_lock_);
-        tasks_.insert({ next, move(tp) });
+        tasks_.insert({ next, std::move(tp) });
         return true;
     }
 
   
     template<typename F>
-    bool daily(int hour, int minute, int second, F&& f) {
-        time_t const now = time(nullptr);
-        tm current;
-#if _WIN32
-        if(!gmtime_s(&current, &now))
-#else
-        if(!gmtime_r(&now, &current))
-#endif
-            return false;
+    bool daily_at_utc(duration const& at_time, F&& f) {
 
-        current.tm_hour = hour;
-        current.tm_min = minute;
-        current.tm_sec = second;
-        time_t const today = mktime(&current);
-        if(today == -1)
-            return false;
-        if(now == today)
-            f();
-        duration const interval = std::chrono::hours(24);
-        time_point const today_point = clock_type::from_time_t(today);
-        time_point const next = (now < today) ? today_point : today_point + interval;
+        time_point const now = clock_type::now();
+        time_point const day = std::chrono::floor<days>(now);
+        time_point const today = day + at_time;
+        duration const interval = std::chrono::hours{24};
+        time_point const next = (now < today) ? today : today + interval;
         task_ptr tp = std::make_unique<task>(task{time_point(), interval,
                                                 next, std::forward<F>(f)});
         std::unique_lock<lock_type> g(tasks_lock_);
-        tasks_.insert(next, move(tp));
+        tasks_.insert({next, std::move(tp)});
     
         return true;
     }
@@ -158,7 +141,7 @@ public:
         worker_ = std::thread([&]() {
             while(!stopping_) {
                 std::unique_lock<std::mutex> g(cv_mutex_);
-                auto const r = cv_.wait_for(g, Tr::precision);
+                auto const r = cv_.wait_for(g, granularity_);
                 if(r != std::cv_status::timeout)
                     continue;
                 schedule();
@@ -178,6 +161,7 @@ public:
 
 private:
     
+    duration granularity_;
     std::atomic<bool> stopping_{false};
     std::condition_variable cv_;
     std::mutex cv_mutex_;
@@ -185,6 +169,7 @@ private:
     tasks tasks_;
     lock_type tasks_lock_;
     rescheduled_tasks rescheduled_tasks_;
+    
 }; // scheduler
 
 
