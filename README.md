@@ -16,7 +16,7 @@ C++17 one-header library to invoke something periodically or at specified time
 int main() {
     timetable::scheduler scheduler;
     scheduler.every(std::chrono::seconds{1},
-        [](){ std::puts("second pass"); });
+        [](){ std::puts("one second"); });
     scheduler.run();
     std::this_thread::sleep_for(std::chrono::seconds{10});
     scheduler.stop();
