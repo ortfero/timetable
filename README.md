@@ -36,7 +36,7 @@ int main() {
     timetable::scheduler scheduler;
     using namespace std::chrono;
     auto const at = hours{13} + minutes{13} + seconds{13};
-    scheduler.daily_at_utc(at, [](){ std::puts("now 13:13:13 utc"); });
+    scheduler.daily(at, [](){ std::puts("now 13:13:13 utc"); });
     scheduler.run();
     std::this_thread::sleep_for(minutes{5});
     scheduler.stop();
