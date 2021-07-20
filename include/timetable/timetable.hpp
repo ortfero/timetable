@@ -99,7 +99,7 @@ public:
 
   
     template<typename F>
-    bool daily_at_utc(duration const& at_time, F&& f) {
+    bool daily(duration const& at_time, F&& f) {
 
         time_point const now = clock_type::now();
         time_point const day = std::chrono::floor<days>(now);
