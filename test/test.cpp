@@ -16,7 +16,7 @@ TEST_CASE("snippet") {
     
     scheduler.every(seconds{10},
                     [](){ std::puts("every second"); });
-    scheduler.daily_at_utc(hours{12} + minutes{12},
+    scheduler.daily(hours{12} + minutes{12},
                     [](){ std::puts("at 12:12:00 UTC"); });
 
     scheduler.run();
