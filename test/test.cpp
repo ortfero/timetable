@@ -12,12 +12,16 @@
 
 TEST_CASE("snippet") {
     using namespace std::chrono;
-    timetable::scheduler scheduler{std::chrono::milliseconds{500}};
+    auto scheduler = timetable::scheduler{};
     
-    scheduler.every(seconds{10},
-                    [](){ std::puts("every second"); });
-    scheduler.daily(hours{12} + minutes{12},
-                    [](){ std::puts("at 12:12:00 UTC"); });
+    /*scheduler.schedule_from_now(seconds{3},
+        [](auto){ std::puts("every 3 seconds"); });
+    scheduler.schedule_daily_at(hours{12} + minutes{20},
+        [](auto){ std::puts("at 12:20:00 UTC"); });*/
+    scheduler.schedule_every_second(
+        [](auto) { std::puts("every second"); });
+    scheduler.schedule_every_minute(
+        [](auto) { std::puts("every minute"); });
 
     scheduler.run();
     std::this_thread::sleep_for(std::chrono::minutes{3});

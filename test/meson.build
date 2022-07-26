@@ -1,8 +1,4 @@
-project('timetable-test', 'cpp',
-  default_options: ['cpp_std=c++17'])
+timetable_test = executable('timetable-test', 'test.cpp',
+           dependencies: [timetable])
 
-incdirs = include_directories(
-    '../include')
-
-executable('timetable-test', 'test.cpp',
-           include_directories: incdirs)
+test('all', timetable_test)
