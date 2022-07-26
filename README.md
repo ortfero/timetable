@@ -1,10 +1,62 @@
 # timetable
 C++17 one-header library to invoke something periodically or at specified time
 
+## Synopsis
+
+```cpp
+namespace timetable {
+
+    template<typename L = detail::spinlock>
+    class scheduler {
+    public:
+
+        scheduler(duration const& granularity = std::chrono::milliseconds{500});
+        
+        scheduler(scheduler const&) = delete;
+        scheduler& operator = (scheduler const&) = delete;
+        ~scheduler();
+
+        template<typename F>
+        task_id schedule_from_now(duration const& interval, F&& handler);
+        
+        template<typename F>
+        task_id schedule_from_time(duration const& interval, time_point time_at, F&& handler);
+        
+        bool unschedule(task_id tid) noexcept;
+      
+        template<typename F>
+        task_id schedule_daily_at(duration const& time_of_day, F&& handler);
+        
+        template<typename F>
+        task_id schedule_every_hour(F&& handler);
+        
+        template<typename F>
+        task_id schedule_every_minute(F&& handler);
+        
+        template<typename F>
+        task_id schedule_every_second(F&& handler);
+        
+        void pass(); // pass scheduling
+        void run(); // run in a separate thread
+        void stop();
+    }; // scheduler
+    
+} // namespace timetable
+```
 
 ## Snippets
 
-### Add periodical callback
+
+### Set scheduler precision
+
+```cpp
+#include <chrono>
+#include <timetable/timetable.hpp>
+...
+auto scheduler = timetable::scheduler{std::chrono::milliseconds{300}};
+```
+
+### Run task periodically from now
 
 ```cpp
 #include <cstdio>
@@ -14,9 +66,9 @@ C++17 one-header library to invoke something periodically or at specified time
 
 
 int main() {
-    timetable::scheduler scheduler;
-    scheduler.every(std::chrono::seconds{1},
-        [](){ std::puts("one second"); });
+    auto scheduler = timetable::scheduler{};
+    scheduler.schedule_from_now(std::chrono::seconds{1},
+        [](std::chrono::system_clock::time_point){ std::puts("one second"); });
     scheduler.run();
     std::this_thread::sleep_for(std::chrono::seconds{10});
     scheduler.stop();
@@ -24,7 +76,7 @@ int main() {
 }
 ```
 
-### Add daily callback
+### Run task daily at specified time
 
 ```cpp
 #include <cstdio>
@@ -33,10 +85,11 @@ int main() {
 #include <timetable/timetable.hpp>
 
 int main() {
-    timetable::scheduler scheduler;
+    auto scheduler = timetable::scheduler{};
     using namespace std::chrono;
     auto const at = hours{13} + minutes{13} + seconds{13};
-    scheduler.daily(at, [](){ std::puts("now 13:13:13 utc"); });
+    scheduler.schedule_daily_at(at,
+        [](std::chrono::system_clock::time_point){ std::puts("now 13:13:13 utc"); });
     scheduler.run();
     std::this_thread::sleep_for(minutes{5});
     scheduler.stop();
@@ -44,13 +97,14 @@ int main() {
 }
 ```
 
-### Set precision
+
+### Remove scheduled task
 ```cpp
 #include <chrono>
+...
+auto scheduler = timetable::scheduler{};
 
-int main() {
-    // 1 second by default
-    timetable::scheduler scheduler{std::chrono::milliseconds{500}};
-    return 0;
-}
+auto const task_id = scheduler.schedule_from_now(std::chrono::hours{1},
+    [](std::chrono::system_clock::time_point){ std::puts("1 hour passed"); });
+scheduler.unschedule(task_id);
 ```
