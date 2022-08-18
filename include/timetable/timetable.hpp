@@ -193,7 +193,7 @@ namespace timetable {
             for(auto it = tasks_.begin(); it != last; ++it) {
                 auto& task = *it->second;
                 task.handler(scheduled);
-                task.next_time = scheduled + task.interval;
+                task.next_time = task.next_time + task.interval;
                 rescheduled_tasks_.push_back(std::move(it->second));
             }
             tasks_.erase(tasks_.begin(), last);
