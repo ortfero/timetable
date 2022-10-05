@@ -80,9 +80,10 @@ namespace timetable {
             handler handler;
         }; // task
 
-        using task_ptr = std::unique_ptr<task>;
+        using task_ptr = std::shared_ptr<task>;
         using tasks = std::multimap<time_point, task_ptr>;
         using rescheduled_tasks = std::vector<task_ptr>;
+        using scheduled_handlers = std::vector<handler>;
         
     private:
         
@@ -93,7 +94,9 @@ namespace timetable {
         std::thread worker_;
         tasks tasks_;
         lock_type tasks_lock_;
+        lock_type pass_lock_;
         rescheduled_tasks rescheduled_tasks_;
+        scheduled_handlers scheduled_handlers_;
         std::atomic<task_id> current_task_id_{1};
         
     public:
@@ -114,7 +117,7 @@ namespace timetable {
             handler(started);
             auto const next_time = started + interval;
             auto const id = current_task_id_.fetch_add(1, std::memory_order_relaxed);
-            auto task_ptr = std::make_unique<task>(
+            auto task_ptr = std::make_shared<task>(
                 task{id, next_time, interval, std::forward<F>(handler)});
             std::unique_lock<lock_type> g(tasks_lock_);
             tasks_.insert({next_time, std::move(task_ptr)});
@@ -126,7 +129,7 @@ namespace timetable {
         task_id schedule_from_time(time_point time_at, duration const& interval, F&& handler) {
             auto const next_time = time_at;
             auto const id = current_task_id_.fetch_add(1, std::memory_order_relaxed);
-            auto task_ptr = std::make_unique<task>(
+            auto task_ptr = std::make_shared<task>(
                 task{id, next_time, interval, std::forward<F>(handler)});
             auto guard = std::unique_lock<lock_type>(tasks_lock_);
             tasks_.insert({next_time, std::move(task_ptr)});
@@ -185,24 +188,16 @@ namespace timetable {
 
         
         void pass() {
-            auto const scheduled = clock_type::now();
-            auto guard = std::unique_lock<lock_type>{tasks_lock_};
-            if(tasks_.empty())
-                return;
-            auto last = tasks_.upper_bound(scheduled);
-            for(auto it = tasks_.begin(); it != last; ++it) {
-                auto& task = *it->second;
-                task.handler(scheduled);
-                task.next_time = task.next_time + task.interval;
-                rescheduled_tasks_.push_back(std::move(it->second));
+            auto const scheduled_time = clock_type::now();
+            auto guard = std::unique_lock<lock_type>{pass_lock_};
+            get_rescheduled_tasks(scheduled_time);
+            for(auto& rescheduled: rescheduled_tasks_) {
+                rescheduled->handler(scheduled_time);
             }
-            tasks_.erase(tasks_.begin(), last);
-            for(auto& rescheduled: rescheduled_tasks_)
-                tasks_.insert({rescheduled->next_time, std::move(rescheduled)});
             rescheduled_tasks_.clear();
         }
 
-      
+
         void run() {
             if(worker_.joinable())
                 return;
@@ -225,6 +220,22 @@ namespace timetable {
             stopping_ = true;
             cv_.notify_one();
             worker_.join();
+        }
+        
+    private:
+    
+        void get_rescheduled_tasks(clock_type::time_point scheduled_time) {
+            auto guard = std::unique_lock<lock_type>{tasks_lock_};
+            auto end_task = tasks_.upper_bound(scheduled_time);
+            for(auto it = tasks_.begin(); it != end_task; ++it) {
+                auto& task = *it->second;
+                task.next_time = task.next_time + task.interval;
+                rescheduled_tasks_.push_back(std::move(it->second));
+            }
+            tasks_.erase(tasks_.begin(), end_task);
+            for(auto& rescheduled: rescheduled_tasks_) {
+                tasks_.insert({rescheduled->next_time, rescheduled});
+            }
         }
         
     }; // scheduler
