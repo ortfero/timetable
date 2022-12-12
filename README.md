@@ -6,9 +6,15 @@ C++17 one-header library to invoke something periodically or at specified time
 ```cpp
 namespace timetable {
 
+    struct context {
+        virtual ~context() { }
+    };
+    
+
     template<typename L = detail::spinlock>
     class scheduler {
     public:
+        using handler = std::function<void (std::chrono::system_clock::time_point, context* context)>;
 
         scheduler(duration const& granularity = std::chrono::milliseconds{500});
         
@@ -17,28 +23,40 @@ namespace timetable {
         ~scheduler();
 
         template<typename F>
-        task_id schedule_from_time(time_point time_at, duration const& interval, F&& handler);
+        task_id schedule_from_time(time_point time_at,
+                                   duration const& interval,
+                                   F&& handler,
+                                   std::unique_ptr<context> context = nullptr);
         
         template<typename F>
-        task_id schedule_from_now(duration const& interval, F&& handler);
+        task_id schedule_from_now(duration const& interval,
+                                  F&& handler,
+                                  std::unique_ptr<context> context = nullptr);
         
         
         bool unschedule(task_id tid) noexcept;
       
         template<typename F>
-        task_id schedule_daily_at(duration const& time_of_day, F&& handler);
+        task_id schedule_daily_at(duration const& time_of_day,
+                                  F&& handler,
+                                  std::unique_ptr<context> context = nullptr);
         
         template<typename F>
-        task_id schedule_every_hour(F&& handler);
+        task_id schedule_every_hour(F&& handler,
+                                    std::unique_ptr<context> context = nullptr);
         
         template<typename F>
-        task_id schedule_every_minute(F&& handler);
+        task_id schedule_every_minute(F&& handler,
+                                      std::unique_ptr<context> context = nullptr);
         
         template<typename F>
-        task_id schedule_every_second(F&& handler);
+        task_id schedule_every_second(F&& handler,
+                                      std::unique_ptr<context> context = nullptr);
                 
         template<typename F>
-        task_id schedule_once(time_point time_at, F&& handler);
+        task_id schedule_once(time_point time_at,
+                              F&& handler,
+                              std::unique_ptr<context> context = nullptr);
         
         void pass(); // pass scheduling
         void run(); // run in a separate thread
