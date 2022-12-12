@@ -7,15 +7,13 @@
 
 #include <atomic>
 #include <chrono>
-#include <functional>
-#include <utility>
-#include <memory>
-#include <vector>
-#include <atomic>
-#include <map>
-#include <thread>
 #include <condition_variable>
-#include <time.h>
+#include <functional>
+#include <map>
+#include <memory>
+#include <thread>
+#include <utility>
+#include <vector>
 
 
 namespace timetable {
@@ -83,7 +81,6 @@ namespace timetable {
         using task_ptr = std::shared_ptr<task>;
         using tasks = std::multimap<time_point, task_ptr>;
         using rescheduled_tasks = std::vector<task_ptr>;
-        using scheduled_handlers = std::vector<handler>;
         
     private:
         
@@ -96,7 +93,6 @@ namespace timetable {
         lock_type tasks_lock_;
         lock_type pass_lock_;
         rescheduled_tasks rescheduled_tasks_;
-        scheduled_handlers scheduled_handlers_;
         std::atomic<task_id> current_task_id_{1};
         
     public:
@@ -110,21 +106,7 @@ namespace timetable {
         scheduler& operator = (scheduler const&) = delete;
         ~scheduler() { stop(); }
 
-        
-        template<typename F>
-        task_id schedule_from_now(duration const& interval, F&& handler) {
-            auto const started = clock_type::now();
-            handler(started);
-            auto const next_time = started + interval;
-            auto const id = current_task_id_.fetch_add(1, std::memory_order_relaxed);
-            auto task_ptr = std::make_shared<task>(
-                task{id, next_time, interval, std::forward<F>(handler)});
-            std::unique_lock<lock_type> g(tasks_lock_);
-            tasks_.insert({next_time, std::move(task_ptr)});
-            return id;
-        }
-        
-        
+
         template<typename F>
         task_id schedule_from_time(time_point time_at, duration const& interval, F&& handler) {
             auto const next_time = time_at;
@@ -135,7 +117,16 @@ namespace timetable {
             tasks_.insert({next_time, std::move(task_ptr)});
             return id;
         }
+
         
+        template<typename F>
+        task_id schedule_from_now(duration const& interval, F&& handler) {
+            auto const started = clock_type::now();
+            handler(started);
+            auto const next_time = started + interval;
+            return schedule_from_time(started + interval, interval, std::forward<F>(handler));
+        }
+                
         
         bool unschedule(task_id tid) noexcept {
             auto guard = std::unique_lock<lock_type>{tasks_lock_};
@@ -184,6 +175,13 @@ namespace timetable {
             auto const current_second = std::chrono::floor<std::chrono::seconds>(now);
             auto const next_second = current_second + std::chrono::seconds{1};
             return schedule_from_time(next_second, std::chrono::seconds{1}, std::forward<F>(handler));
+        }
+        
+        
+        template<typename F>
+        task_id schedule_once(time_point time_at, F&& handler) {
+            auto const now = clock_type::now();
+            return schedule_from_time(time_at, duration::zero(), std::forward<F>(handler));
         }
 
         
@@ -234,6 +232,8 @@ namespace timetable {
             }
             tasks_.erase(tasks_.begin(), end_task);
             for(auto& rescheduled: rescheduled_tasks_) {
+                if(rescheduled->interval == duration::zero())
+                    continue;
                 tasks_.insert({rescheduled->next_time, rescheduled});
             }
         }
