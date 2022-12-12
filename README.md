@@ -17,10 +17,11 @@ namespace timetable {
         ~scheduler();
 
         template<typename F>
-        task_id schedule_from_now(duration const& interval, F&& handler);
+        task_id schedule_from_time(time_point time_at, duration const& interval, F&& handler);
         
         template<typename F>
-        task_id schedule_from_time(duration const& interval, time_point time_at, F&& handler);
+        task_id schedule_from_now(duration const& interval, F&& handler);
+        
         
         bool unschedule(task_id tid) noexcept;
       
@@ -35,6 +36,9 @@ namespace timetable {
         
         template<typename F>
         task_id schedule_every_second(F&& handler);
+                
+        template<typename F>
+        task_id schedule_once(time_point time_at, F&& handler);
         
         void pass(); // pass scheduling
         void run(); // run in a separate thread
