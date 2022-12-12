@@ -57,6 +57,11 @@ namespace timetable {
         }; // spinlock
 
     } // namespace detail
+    
+    
+    struct context {
+        virtual ~context() { }
+    };
 
 
     template<typename L = detail::spinlock>
@@ -68,7 +73,7 @@ namespace timetable {
         using time_point = typename clock_type::time_point;
         using duration = typename clock_type::duration;
         using days = std::chrono::duration<std::int64_t, std::ratio<86400>>;
-        using handler = std::function<void (std::chrono::system_clock::time_point)>;
+        using handler = std::function<void (std::chrono::system_clock::time_point, context* context)>;
         
 
         struct task {
@@ -76,6 +81,7 @@ namespace timetable {
             time_point next_time;
             duration interval;
             handler handler;
+            std::unique_ptr<context> context;
         }; // task
 
         using task_ptr = std::shared_ptr<task>;
@@ -108,11 +114,20 @@ namespace timetable {
 
 
         template<typename F>
-        task_id schedule_from_time(time_point time_at, duration const& interval, F&& handler) {
+        task_id schedule_from_time(time_point time_at,
+                                   duration const& interval,
+                                   F&& handler,
+                                   std::unique_ptr<context> context = nullptr) {
             auto const next_time = time_at;
             auto const id = current_task_id_.fetch_add(1, std::memory_order_relaxed);
             auto task_ptr = std::make_shared<task>(
-                task{id, next_time, interval, std::forward<F>(handler)});
+                                task {
+                                    id,
+                                    next_time,
+                                    interval,
+                                    std::forward<F>(handler),
+                                    std::move(context)
+                                });
             auto guard = std::unique_lock<lock_type>(tasks_lock_);
             tasks_.insert({next_time, std::move(task_ptr)});
             return id;
@@ -120,11 +135,16 @@ namespace timetable {
 
         
         template<typename F>
-        task_id schedule_from_now(duration const& interval, F&& handler) {
+        task_id schedule_from_now(duration const& interval,
+                                  F&& handler,
+                                  std::unique_ptr<context> context = nullptr) {
             auto const started = clock_type::now();
             handler(started);
             auto const next_time = started + interval;
-            return schedule_from_time(started + interval, interval, std::forward<F>(handler));
+            return schedule_from_time(started + interval,
+                                      interval,
+                                      std::forward<F>(handler),
+                                      std::move(context));
         }
                 
         
@@ -141,47 +161,69 @@ namespace timetable {
 
       
         template<typename F>
-        task_id schedule_daily_at(duration const& time_of_day, F&& handler) {
+        task_id schedule_daily_at(duration const& time_of_day,
+                                  F&& handler,
+                                  std::unique_ptr<context> context = nullptr) {
             auto const now = clock_type::now();
             auto const day = std::chrono::floor<days>(now);
             auto const today = day + time_of_day;
             auto const interval = std::chrono::hours{24};
             auto const next_time = (now < today) ? today : today + interval;
-            return schedule_from_time(next_time, interval, std::forward<F>(handler));
+            return schedule_from_time(next_time,
+                                      interval,
+                                      std::forward<F>(handler),
+                                      std::move(context));
         }
         
         
         template<typename F>
-        task_id schedule_every_hour(F&& handler) {
+        task_id schedule_every_hour(F&& handler,
+                                    std::unique_ptr<context> context = nullptr) {
             auto const now = clock_type::now();
             auto const current_hour = std::chrono::floor<std::chrono::hours>(now);
             auto const next_hour = current_hour + std::chrono::hours{1};
-            return schedule_from_time(next_hour, std::chrono::hours{1}, std::forward<F>(handler));
+            return schedule_from_time(next_hour,
+                                      std::chrono::hours{1},
+                                      std::forward<F>(handler),
+                                      std::move(context));
         }
         
         
         template<typename F>
-        task_id schedule_every_minute(F&& handler) {
+        task_id schedule_every_minute(F&& handler,
+                                      std::unique_ptr<context> context = nullptr) {
             auto const now = clock_type::now();
             auto const current_minute = std::chrono::floor<std::chrono::minutes>(now);
             auto const next_minute = current_minute + std::chrono::minutes{1};
-            return schedule_from_time(next_minute, std::chrono::minutes{1}, std::forward<F>(handler));
+            return schedule_from_time(next_minute,
+                                      std::chrono::minutes{1},
+                                      std::forward<F>(handler),
+                                      std::move(context));
         }
         
         
         template<typename F>
-        task_id schedule_every_second(F&& handler) {
+        task_id schedule_every_second(F&& handler,
+                                      std::unique_ptr<context> context = nullptr) {
             auto const now = clock_type::now();
             auto const current_second = std::chrono::floor<std::chrono::seconds>(now);
             auto const next_second = current_second + std::chrono::seconds{1};
-            return schedule_from_time(next_second, std::chrono::seconds{1}, std::forward<F>(handler));
+            return schedule_from_time(next_second,
+                                      std::chrono::seconds{1},
+                                      std::forward<F>(handler),
+                                      std::move(context));
         }
         
         
         template<typename F>
-        task_id schedule_once(time_point time_at, F&& handler) {
+        task_id schedule_once(time_point time_at,
+                              F&& handler,
+                              std::unique_ptr<context> context = nullptr) {
             auto const now = clock_type::now();
-            return schedule_from_time(time_at, duration::zero(), std::forward<F>(handler));
+            return schedule_from_time(time_at,
+                                      duration::zero(),
+                                      std::forward<F>(handler),
+                                      std::move(context));
         }
 
         
@@ -190,7 +232,7 @@ namespace timetable {
             auto guard = std::unique_lock<lock_type>{pass_lock_};
             get_rescheduled_tasks(scheduled_time);
             for(auto& rescheduled: rescheduled_tasks_) {
-                rescheduled->handler(scheduled_time);
+                rescheduled->handler(scheduled_time, rescheduled->context.get());
             }
             rescheduled_tasks_.clear();
         }

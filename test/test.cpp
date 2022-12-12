@@ -19,9 +19,9 @@ TEST_CASE("snippet") {
     scheduler.schedule_daily_at(hours{12} + minutes{20},
         [](auto){ std::puts("at 12:20:00 UTC"); });*/
     scheduler.schedule_every_second(
-        [](auto) { std::puts("every second"); });
+        [](auto, auto*) { std::puts("every second"); });
     scheduler.schedule_every_minute(
-        [](auto) { std::puts("every minute"); });
+        [](auto, auto*) { std::puts("every minute"); });
 
     scheduler.run();
     std::this_thread::sleep_for(std::chrono::minutes{3});
