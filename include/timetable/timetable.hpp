@@ -139,7 +139,7 @@ namespace timetable {
                                   F&& handler,
                                   std::unique_ptr<context> context = nullptr) {
             auto const started = clock_type::now();
-            handler(started);
+            handler(started, context.get());
             auto const next_time = started + interval;
             return schedule_from_time(started + interval,
                                       interval,
