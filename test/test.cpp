@@ -22,6 +22,8 @@ TEST_CASE("snippet") {
         [](auto, auto*) { std::puts("every second"); });
     scheduler.schedule_every_minute(
         [](auto, auto*) { std::puts("every minute"); });
+    scheduler.schedule_once(std::chrono::system_clock::now() + std::chrono::seconds{3},
+        [](auto, auto*) { std::puts("once"); });
 
     scheduler.run();
     std::this_thread::sleep_for(std::chrono::minutes{3});

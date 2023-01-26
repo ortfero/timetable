@@ -115,7 +115,7 @@ namespace timetable {
 
         template<typename F>
         task_id schedule_from_time(time_point time_at,
-                                   duration const& interval,
+                                   duration interval,
                                    F&& handler,
                                    std::unique_ptr<context> context = nullptr) {
             auto const next_time = time_at;
@@ -139,7 +139,7 @@ namespace timetable {
                                   F&& handler,
                                   std::unique_ptr<context> context = nullptr) {
             auto const started = clock_type::now();
-            handler(started, context.get());
+            //handler(started, context.get());
             auto const next_time = started + interval;
             return schedule_from_time(started + interval,
                                       interval,
@@ -151,9 +151,21 @@ namespace timetable {
         bool unschedule(task_id tid) noexcept {
             auto guard = std::unique_lock<lock_type>{tasks_lock_};
             for(auto it = tasks_.begin(); it != tasks_.end(); ++it) {
-                if(it->id != tid)
+                if(it->second->id != tid)
                     continue;
                 tasks_.erase(it);
+                return true;
+            }
+            return false;
+        }
+
+
+        bool reschedule(task_id tid, duration interval) {
+            auto guard = std::unique_lock<lock_type>{tasks_lock_};
+            for(auto it = tasks_.begin(); it != tasks_.end(); ++it) {
+                if(it->second->id != tid)
+                    continue;
+                it->second->interval = interval;
                 return true;
             }
             return false;
